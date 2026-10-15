@@ -12,6 +12,10 @@ permissions:
 env:
   PYTHON_VERSION: "3.12"
 
+concurrency:
+  group: axon-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # 构建分发包
   build:
@@ -128,6 +132,18 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release uniqueness (idempotency guard)
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          COUNT=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --jq "[.[] | select(.tag_name == \"${TAG}\")] | length")
+          echo "release objects for ${TAG}: ${COUNT}"
+          if [ "${COUNT}" != "1" ]; then
+            echo "::error::expected exactly 1 release for ${TAG}, found ${COUNT}; release state is not idempotent"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 发布到 PyPI（使用 Trusted Publishing）
   publish-pypi:
